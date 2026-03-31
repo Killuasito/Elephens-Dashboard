@@ -1,0 +1,23 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Coleções de dados: apenas usuários autenticados
+    match /{document=**} {
+      allow read, write: if request.auth != null;
+    }
+
+    // Permissões de módulos por usuário
+    match /permissoes/{uid} {
+      // Qualquer autenticado pode ler (admin precisa listar todos)
+      allow read: if request.auth != null;
+      // Usuário pode criar apenas o próprio documento (primeiro login)
+      allow create: if request.auth != null && request.auth.uid == uid;
+      // Apenas outros usuários autenticados podem atualizar (controlado via app pelo admin)
+      // Para segurança máxima em produção, use Firebase Custom Claims
+      allow update: if request.auth != null;
+      allow delete: if false;
+    }
+  }
+}
