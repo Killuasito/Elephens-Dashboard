@@ -7,6 +7,9 @@ import StatCard from "@/components/ui/StatCard";
 import DataTable from "@/components/ui/DataTable";
 import { useCollection } from "@/hooks/useFirestore";
 import { Cliente, Produto, Tarefa, Transacao, Coluna } from "@/types";
+
+// Ensure Cliente satisfies Record<string, unknown>
+type ClienteRecord = Cliente & Record<string, unknown>;
 import { FiUsers, FiDollarSign, FiCheckSquare, FiPackage } from "react-icons/fi";
 
 const colunasClientes: Coluna[] = [
@@ -81,7 +84,7 @@ export default function DashboardPage() {
           {clientesRecentes.length === 0 ? (
             <p className="text-sm text-gray-400 dark:text-gray-500 py-4">Nenhum cliente cadastrado ainda.</p>
           ) : (
-            <DataTable colunas={colunasClientes} dados={clientesRecentes} />
+            <DataTable<ClienteRecord> colunas={colunasClientes} dados={clientesRecentes as ClienteRecord[]} />
           )}
         </div>
       </div>
