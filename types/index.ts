@@ -80,6 +80,59 @@ export interface Transacao extends Documento {
   clienteNome?: string;
 }
 
+// Conta a Pagar
+export interface ContaPagar extends Documento {
+  descricao: string;
+  fornecedor: string;
+  fornecedorId?: string;
+  valor: number;
+  vencimento: string; // YYYY-MM-DD
+  categoria?: string;
+  status: "pendente" | "pago";
+}
+
+// Conta a Receber
+export interface ContaReceber extends Documento {
+  descricao: string;
+  cliente: string;
+  clienteId?: string;
+  valor: number;
+  vencimento: string; // YYYY-MM-DD
+  categoria?: string;
+  status: "pendente" | "recebido";
+}
+
+// Item de Orçamento (linha de produto/serviço)
+export interface OrcamentoItem {
+  descricao: string;
+  quantidade: number;
+  precoUnitario: number;
+  total: number; // quantidade * precoUnitario
+}
+
+// Orçamento/Proposta Comercial
+export interface Orcamento extends Documento {
+  numero: string;       // ex: ORC-0001
+  titulo: string;
+  clienteId?: string;
+  clienteNome: string;
+  dataEmissao: string;  // YYYY-MM-DD
+  dataValidade: string; // YYYY-MM-DD
+  itens: OrcamentoItem[];
+  subtotal: number;
+  desconto: number;        // valor absoluto (R$)
+  descontoPerc: number;    // desconto em percentual (%)
+  frete: number;           // valor do frete (R$)
+  juros: number;           // juros em percentual (%)
+  multa: number;           // multa em percentual (%)
+  acrescimo: number;       // acréscimo valor absoluto (R$)
+  totalAjustes: number;    // soma dos acréscimos (frete + acrescimo + juros + multa)
+  totalDescontos: number;  // soma dos descontos
+  total: number;
+  observacoes?: string;
+  status: "rascunho" | "enviado" | "aprovado" | "recusado";
+}
+
 // Retorno do hook de autenticação
 export interface AuthHookReturn {
   user: User | null;

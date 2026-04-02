@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -9,8 +8,6 @@ import {
   FiBarChart2,
   FiSettings,
   FiLogOut,
-  FiMenu,
-  FiX,
   FiPackage,
   FiCheckSquare,
   FiTrendingUp,
@@ -18,6 +15,7 @@ import {
   FiMessageSquare,
   FiFolder,
   FiUploadCloud,
+  FiClipboard,
 } from "react-icons/fi";
 import clsx from "clsx";
 import { useAuth } from "@/hooks/useAuth";
@@ -36,6 +34,7 @@ const NAV_MODULOS: { href: string; label: string; icone: React.ElementType; modu
   { href: "/produtos",   label: "Produtos",    icone: FiPackage,     modulo: "produtos" },
   { href: "/tarefas",    label: "Tarefas",     icone: FiCheckSquare, modulo: "tarefas" },
   { href: "/financeiro", label: "Financeiro",  icone: FiTrendingUp,  modulo: "financeiro" },
+  { href: "/orcamento",  label: "Orçamentos",  icone: FiClipboard,   modulo: "orcamento" },
   { href: "/relatorios", label: "Relatórios",  icone: FiBarChart2,   modulo: "relatorios" },
   { href: "/chatbot",    label: "ChatBot IA",  icone: FiMessageSquare, modulo: "chatbot" },
   { href: "/documentos",  label: "Documentos",  icone: FiFolder,        modulo: "documentos" },
@@ -49,11 +48,10 @@ const NAV_RODAPE = [
 
 const ADMIN_EMAIL = process.env.NEXT_PUBLIC_ADMIN_EMAIL;
 
-export default function Sidebar() {
+export default function Sidebar({ aberta, setAberta }: { aberta: boolean; setAberta: (v: boolean) => void }) {
   const pathname = usePathname();
   const { user, signOut, loading: authLoading } = useAuth();
   const { temAcesso, nomeUsuario, nomeApp, loading: loadingPermissoes } = usePermissoes();
-  const [aberta, setAberta] = useState(false);
 
   const ehAdmin = user?.email === ADMIN_EMAIL;
   // Suprime módulos até auth + permissões resolverem — evita flash de itens incorretos
@@ -81,15 +79,6 @@ export default function Sidebar() {
 
   return (
     <>
-      {/* Botão hambúrguer — visível apenas em mobile */}
-      <button
-        onClick={() => setAberta(!aberta)}
-        className="fixed top-4 left-4 z-50 p-2 rounded-xl bg-white dark:bg-gray-900 shadow-md lg:hidden"
-        aria-label="Alternar menu"
-      >
-        {aberta ? <FiX size={20} /> : <FiMenu size={20} />}
-      </button>
-
       {/* Overlay escuro em mobile quando sidebar aberta */}
       {aberta && (
         <div

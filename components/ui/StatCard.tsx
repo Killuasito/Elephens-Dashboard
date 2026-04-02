@@ -42,25 +42,25 @@ export default function StatCard({
   return (
     <div
       className={clsx(
-        "rounded-xl shadow-sm p-6 flex items-center gap-4 transition-all hover:shadow-md",
+        "rounded-xl shadow-sm p-5 flex flex-col gap-3 transition-all hover:shadow-md",
         cores.fundo
       )}
     >
       {/* Ícone do card */}
-      <div className={clsx("p-3 rounded-xl text-2xl", cores.icone)}>
+      <div className={clsx("p-2.5 rounded-xl text-2xl w-fit", cores.icone)}>
         {icone}
       </div>
 
       {/* Informações do card */}
-      <div className="flex flex-col">
-        <span className="text-sm text-gray-500 dark:text-gray-400 font-medium">
+      <div className="flex flex-col min-w-0">
+        <span className="text-sm text-gray-500 dark:text-gray-400 font-medium truncate">
           {titulo}
         </span>
-        <span className={clsx("text-2xl font-bold", cores.valor)}>
+        <span className={clsx("text-xl sm:text-2xl font-bold", cores.valor)}>
           {valor}
         </span>
         {variacao && (
-          <span className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+          <span className="text-xs text-gray-400 dark:text-gray-500 mt-1 truncate">
             {variacao}
           </span>
         )}

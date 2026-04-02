@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { useCollection } from "@/hooks/useFirestore";
 import { Transacao, Cliente, Produto, Tarefa } from "@/types";
-import { FiSend, FiMessageSquare, FiRefreshCw } from "react-icons/fi";
+import { FiSend, FiMessageSquare, FiRefreshCw, FiBookmark, FiList, FiTrash2, FiX } from "react-icons/fi";
 import { RiRobot2Line } from "react-icons/ri";
 import clsx from "clsx";
 
@@ -13,6 +13,15 @@ interface Mensagem {
   role: "user" | "assistant";
   content: string;
 }
+
+interface ChatSalvo {
+  id: string;          // timestamp ISO como ID único
+  titulo: string;      // primeira mensagem do usuário (truncada)
+  mensagens: Mensagem[];
+  salvadoEm: string;   // ISO string
+}
+
+const STORAGE_KEY = "elephens_chats_salvos";
 
 // ─── Perguntas sugeridas ──────────────────────────────────────────
 const SUGESTOES = [
@@ -106,6 +115,20 @@ function renderMarkdown(text: string): React.ReactNode[] {
   const lines = text.split("\n");
   const nodes: React.ReactNode[] = [];
   let listBuffer: string[] = [];
+  let tableBuffer: string[] = [];
+
+  // Renderiza bold (**texto**) e preserva o resto como texto
+  const renderInline = (s: string): React.ReactNode => {
+    const parts = s.split(/(\*\*[^*]+\*\*)/g);
+    if (parts.length === 1) return s;
+    return parts.map((part, i) =>
+      part.startsWith("**") && part.endsWith("**") ? (
+        <strong key={i}>{part.slice(2, -2)}</strong>
+      ) : (
+        part
+      )
+    );
+  };
 
   const flushList = (key: string) => {
     if (listBuffer.length === 0) return;
@@ -122,25 +145,72 @@ function renderMarkdown(text: string): React.ReactNode[] {
     listBuffer = [];
   };
 
-  // Renderiza bold (**texto**) e preserva o resto como texto
-  const renderInline = (s: string): React.ReactNode => {
-    const parts = s.split(/(\*\*[^*]+\*\*)/g);
-    if (parts.length === 1) return s;
-    return parts.map((part, i) =>
-      part.startsWith("**") && part.endsWith("**") ? (
-        <strong key={i}>{part.slice(2, -2)}</strong>
-      ) : (
-        part
-      )
+  const flushTable = (key: string) => {
+    if (tableBuffer.length === 0) return;
+
+    const parseRow = (line: string) =>
+      line.split("|").slice(1, -1).map((c) => c.trim());
+
+    const isSeparator = (line: string) => /^\|[\s\-:|]+\|$/.test(line.trim());
+
+    const sepIdx = tableBuffer.findIndex(isSeparator);
+    const headerRows = sepIdx > 0 ? tableBuffer.slice(0, sepIdx) : [];
+    const bodyRows = sepIdx >= 0 ? tableBuffer.slice(sepIdx + 1) : tableBuffer;
+
+    nodes.push(
+      <div key={key} className="overflow-x-auto my-2 rounded-xl border border-gray-200 dark:border-gray-700">
+        <table className="w-full text-sm border-collapse">
+          {headerRows.length > 0 && (
+            <thead className="bg-gray-100 dark:bg-gray-800">
+              {headerRows.map((row, i) => (
+                <tr key={i}>
+                  {parseRow(row).map((cell, j) => (
+                    <th
+                      key={j}
+                      className="px-3 py-2 text-left font-semibold text-gray-700 dark:text-gray-200 whitespace-nowrap border-b border-gray-200 dark:border-gray-700"
+                    >
+                      {renderInline(cell)}
+                    </th>
+                  ))}
+                </tr>
+              ))}
+            </thead>
+          )}
+          <tbody>
+            {bodyRows.map((row, i) => (
+              <tr key={i} className={i % 2 !== 0 ? "bg-gray-50 dark:bg-gray-800/40" : ""}>
+                {parseRow(row).map((cell, j) => (
+                  <td
+                    key={j}
+                    className="px-3 py-2 text-gray-700 dark:text-gray-300 border-b border-gray-100 dark:border-gray-800 last:border-b-0"
+                  >
+                    {renderInline(cell)}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     );
+
+    tableBuffer = [];
   };
 
   lines.forEach((line, idx) => {
     const key = `l${idx}`;
 
+    // Linha de tabela — começa com |
+    if (line.trim().startsWith("|")) {
+      flushList(`flush-${key}`);
+      tableBuffer.push(line.trim());
+      return;
+    }
+
     // Headings ## e ###
     if (/^#{1,3} /.test(line)) {
       flushList(`flush-${key}`);
+      flushTable(`table-${key}`);
       const level = (line.match(/^#+/) ?? [""])[0].length;
       const content = line.replace(/^#+\s*/, "");
       const className =
@@ -159,19 +229,22 @@ function renderMarkdown(text: string): React.ReactNode[] {
 
     // Bullet: linhas que começam com - ou *
     if (/^[-*]\s+/.test(line)) {
+      flushTable(`table-${key}`);
       listBuffer.push(line.replace(/^[-*]\s+/, ""));
       return;
     }
 
-    // Linha vazia — fecha lista se aberta, senão é espaço
+    // Linha vazia — fecha lista/tabela se abertas
     if (line.trim() === "") {
       flushList(`flush-${key}`);
+      flushTable(`table-${key}`);
       nodes.push(<br key={key} />);
       return;
     }
 
     // Texto normal
     flushList(`flush-${key}`);
+    flushTable(`table-${key}`);
     nodes.push(
       <p key={key} className="leading-relaxed">
         {renderInline(line)}
@@ -180,6 +253,7 @@ function renderMarkdown(text: string): React.ReactNode[] {
   });
 
   flushList("flush-end");
+  flushTable("table-end");
   return nodes;
 }
 
@@ -252,6 +326,75 @@ export default function ChatbotPage() {
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
 
+  // ─── Chats salvos ─────────────────────────────────────────────
+  const [chatsSalvos, setChatsSalvos] = useState<ChatSalvo[]>([]);
+  const [painelAberto, setPainelAberto] = useState(false);
+  const [chatAtualId, setChatAtualId] = useState<string | null>(null);
+  const [salvandoToast, setSalvandoToast] = useState(false);
+
+  // Carrega chats do localStorage na montagem
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) setChatsSalvos(JSON.parse(raw) as ChatSalvo[]);
+    } catch {
+      // localStorage indisponível ou JSON corrompido
+    }
+  }, []);
+
+  const persistir = (lista: ChatSalvo[]) => {
+    setChatsSalvos(lista);
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(lista));
+    } catch {
+      // quota excedida ou modo privado
+    }
+  };
+
+  const salvarChat = () => {
+    if (mensagens.length === 0) return;
+    const primeiraMsgUsuario = mensagens.find((m) => m.role === "user")?.content ?? "Conversa sem título";
+    const titulo = primeiraMsgUsuario.length > 60 ? primeiraMsgUsuario.slice(0, 57) + "…" : primeiraMsgUsuario;
+    const agora = new Date().toISOString();
+
+    // Se já tem ID (chat previamente salvo), atualiza ao invés de criar novo
+    if (chatAtualId) {
+      const atualizado = chatsSalvos.map((c) =>
+        c.id === chatAtualId ? { ...c, titulo, mensagens, salvadoEm: agora } : c
+      );
+      persistir(atualizado);
+    } else {
+      const novo: ChatSalvo = { id: agora, titulo, mensagens, salvadoEm: agora };
+      const atualizado = [novo, ...chatsSalvos];
+      persistir(atualizado);
+      setChatAtualId(agora);
+    }
+
+    // Toast feedback
+    setSalvandoToast(true);
+    setTimeout(() => setSalvandoToast(false), 2000);
+  };
+
+  const carregarChat = (chat: ChatSalvo) => {
+    setMensagens(chat.mensagens);
+    setChatAtualId(chat.id);
+    setErro(null);
+    setInput("");
+    setPainelAberto(false);
+  };
+
+  const excluirChat = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const atualizado = chatsSalvos.filter((c) => c.id !== id);
+    persistir(atualizado);
+    if (chatAtualId === id) setChatAtualId(null);
+  };
+
+  const formatarData = (iso: string) => {
+    const d = new Date(iso);
+    return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  };
+
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -315,8 +458,7 @@ export default function ChatbotPage() {
 
           try {
             const parsed = JSON.parse(data);
-            const delta: string =
-              parsed.choices?.[0]?.delta?.content ?? "";
+            const delta: string = parsed.choices?.[0]?.delta?.content ?? "";
             if (!delta) continue;
 
             setMensagens((prev) => {
@@ -339,7 +481,6 @@ export default function ChatbotPage() {
       setErro(
         err instanceof Error ? err.message : "Erro inesperado. Tente novamente."
       );
-      // Remove o placeholder vazio em caso de erro
       setMensagens((prev) =>
         prev[prev.length - 1]?.content === "" ? prev.slice(0, -1) : prev
       );
@@ -360,6 +501,7 @@ export default function ChatbotPage() {
     setMensagens([]);
     setErro(null);
     setInput("");
+    setChatAtualId(null);
     inputRef.current?.focus();
   };
 
@@ -367,11 +509,19 @@ export default function ChatbotPage() {
 
   return (
     <DashboardLayout titulo="ChatBot IA">
-      <div className="flex flex-col h-[calc(100vh-8rem)] max-w-3xl mx-auto">
+      {/* Toast de salvo */}
+      {salvandoToast && (
+        <div className="fixed top-4 right-4 z-50 flex items-center gap-2 px-4 py-2.5 bg-green-600 text-white text-sm font-medium rounded-xl shadow-lg">
+          <FiBookmark size={14} />
+          {chatAtualId ? "Chat atualizado!" : "Chat salvo!"}
+        </div>
+      )}
+
+      <div className="flex flex-col h-[calc(100vh-7rem)] sm:h-[calc(100vh-8rem)] max-w-3xl mx-auto">
         {/* Header do chat */}
-        <div className="flex items-center justify-between mb-4">
+        <div className="relative flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-blue-600 flex items-center justify-center text-white shadow">
+            <div className="w-10 h-10 rounded-2xl bg-blue-600 flex items-center justify-center text-white">
               <RiRobot2Line size={20} />
             </div>
             <div>
@@ -383,22 +533,103 @@ export default function ChatbotPage() {
               </p>
             </div>
           </div>
-          {!semMensagens && (
-            <button
-              onClick={reiniciar}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 bg-gray-100 dark:bg-gray-800 rounded-lg transition-colors"
-            >
-              <FiRefreshCw size={13} />
-              Nova conversa
-            </button>
-          )}
+
+          {/* Botões do header */}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {/* Salvar / Atualizar chat */}
+            {!semMensagens && (
+              <button
+                onClick={salvarChat}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition-colors"
+              >
+                <FiBookmark size={13} />
+                {chatAtualId ? "Atualizar" : "Salvar chat"}
+              </button>
+            )}
+
+            {/* Lista de chats salvos */}
+            {chatsSalvos.length > 0 && (
+              <div>
+                <button
+                  onClick={() => setPainelAberto((v) => !v)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
+                >
+                  <FiList size={13} />
+                  Chats salvos
+                </button>
+
+                {painelAberto && (
+                  <div className="absolute right-0 top-full mt-1 w-72 max-w-[calc(100vw-2rem)] bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-xl z-40 overflow-hidden">
+                    <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-gray-800">
+                      <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+                        Chats salvos
+                      </span>
+                      <button
+                        onClick={() => setPainelAberto(false)}
+                        className="p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400"
+                      >
+                        <FiX size={14} />
+                      </button>
+                    </div>
+                    <ul className="max-h-56 overflow-y-auto divide-y divide-gray-100 dark:divide-gray-800">
+                      {chatsSalvos.map((chat) => (
+                        <li
+                          key={chat.id}
+                          onClick={() => carregarChat(chat)}
+                          className={clsx(
+                            "group flex items-start gap-3 px-4 py-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors",
+                            chatAtualId === chat.id && "bg-blue-50 dark:bg-blue-900/20"
+                          )}
+                        >
+                          <FiBookmark
+                            size={14}
+                            className={clsx(
+                              "mt-0.5 shrink-0",
+                              chatAtualId === chat.id
+                                ? "text-blue-500"
+                                : "text-gray-300 dark:text-gray-600"
+                            )}
+                          />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm text-gray-800 dark:text-gray-100 truncate">
+                              {chat.titulo}
+                            </p>
+                            <p className="text-xs text-gray-400 mt-0.5">
+                              {formatarData(chat.salvadoEm)}
+                            </p>
+                          </div>
+                          <button
+                            onClick={(e) => excluirChat(chat.id, e)}
+                            className="opacity-0 group-hover:opacity-100 p-1 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/30 text-red-400 transition-all shrink-0"
+                          >
+                            <FiTrash2 size={13} />
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Nova conversa */}
+            {!semMensagens && (
+              <button
+                onClick={reiniciar}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
+              >
+                <FiRefreshCw size={13} />
+                Nova conversa
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Área de mensagens */}
-        <div className="flex-1 overflow-y-auto bg-gray-50 dark:bg-gray-900/50 rounded-2xl border border-gray-200 dark:border-gray-700 p-4 flex flex-col gap-4">
+        <div className="flex-1 overflow-y-auto bg-gray-50 dark:bg-gray-900/50 rounded-2xl p-4 flex flex-col gap-3">
           {semMensagens ? (
             /* Tela inicial com sugestões */
-            <div className="flex-1 flex flex-col items-center justify-center gap-6 py-8">
+            <div className="flex-1 flex flex-col items-center justify-center gap-6 py-10">
               <div className="flex flex-col items-center gap-3 text-center">
                 <div className="w-14 h-14 rounded-2xl bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center text-blue-600 dark:text-blue-400">
                   <FiMessageSquare size={26} />
@@ -419,7 +650,7 @@ export default function ChatbotPage() {
                   <button
                     key={s}
                     onClick={() => enviar(s)}
-                    className="text-left px-4 py-3 text-sm text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl hover:border-blue-400 dark:hover:border-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all"
+                    className="text-left px-4 py-3 text-sm text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl hover:border-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors"
                   >
                     {s}
                   </button>
@@ -441,7 +672,7 @@ export default function ChatbotPage() {
 
           {/* Erro */}
           {erro && (
-            <p className="self-stretch text-sm text-red-500 bg-red-50 dark:bg-red-900/20 px-4 py-3 rounded-xl">
+            <p className="self-stretch text-sm text-red-500 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl px-4 py-3">
               {erro}
             </p>
           )}
@@ -450,7 +681,7 @@ export default function ChatbotPage() {
         </div>
 
         {/* Input */}
-        <div className="mt-3 flex gap-2 items-end bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl px-4 py-3 shadow-sm">
+        <div className="mt-3 flex gap-2 items-end bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl px-4 py-3">
           <textarea
             ref={inputRef}
             rows={1}
@@ -464,13 +695,13 @@ export default function ChatbotPage() {
             onKeyDown={handleKeyDown}
             placeholder="Pergunte sobre seu negócio... (Enter para enviar)"
             disabled={carregando}
-            className="flex-1 resize-none bg-transparent text-sm text-gray-800 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500 outline-none leading-relaxed disabled:opacity-50"
+            className="flex-1 resize-none bg-transparent text-sm text-gray-800 dark:text-gray-100 placeholder-gray-400 focus:outline-none"
             style={{ minHeight: "24px" }}
           />
           <button
             onClick={() => enviar(input)}
             disabled={carregando || !input.trim()}
-            className="shrink-0 w-9 h-9 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed text-white flex items-center justify-center transition-colors"
+            className="shrink-0 w-9 h-9 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center text-white transition-colors"
             aria-label="Enviar"
           >
             <FiSend size={15} />
@@ -484,3 +715,4 @@ export default function ChatbotPage() {
     </DashboardLayout>
   );
 }
+

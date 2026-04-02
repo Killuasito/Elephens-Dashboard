@@ -164,6 +164,23 @@ Utiliza a API [OpenRouter](https://openrouter.ai/) com o modelo `nvidia/nemotron
 
 ---
 
+## 🆕 Novas adições (Abr/2026)
+
+Resumo das funcionalidades e melhorias recentes adicionadas ao painel:
+
+- **Financeiro — novas abas:** página do Financeiro reorganizada em 3 abas: *Extrato*, *Contas a Pagar* e *Contas a Receber* com filtros e visualização por período.
+- **Chatbot — salvar conversas:** botão de "Salvar Chat" que persiste conversas no `localStorage` (chave: `elephens_chats_salvos`), com painel de chats salvos, atualizar/excluir e destaque da conversa ativa.
+- **Orçamentos (novo módulo):** CRUD completo de orçamentos, modal de criação/edição, listagem, filtros, pré-visualização e fluxo de status (enviar / aprovar / rejeitar).
+- **Exportar PDF de Orçamento:** geração de HTML imprimível e acionamento de `window.print()` para exportar/baixar o orçamento como PDF sem dependências externas.
+- **Campos financeiros ampliados:** orçamentos agora suportam `desconto` (R$), `descontoPerc` (%), `frete` (R$), `juros` (%), `multa` (%) e `acrescimo` (R$) com cálculo automático de subtotais, descontos e ajustes.
+- **Formatação de datas:** datas exibidas no formato `DD/MM/YYYY` (helper `fmtData`) em tabelas, preview e PDFs.
+- **Aprimoramentos mobile / layout:** melhorias responsivas — hambúrguer movido para a `Navbar`, estado do `Sidebar` promovido ao `layout`, `StatCard` reorganizado (ícone acima) para evitar truncamento, ajustes de padding e overflow.
+- **Tipos e wiring:** atualizações em `types/index.ts` para incluir os novos campos de `Orcamento` e `OrcamentoItem`; registro do módulo de orçamentos em `lib/modulos.ts` e link no `Sidebar`.
+
+Se quiser, posso adicionar instruções de uso rápido para o fluxo de Orçamentos (ex.: criar → enviar → exportar) ou incluir screenshots dos novos painéis.
+
+---
+
 ## 📄 Licença
 
 MIT — use e modifique livremente.
