@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import * as XLSX from "xlsx";
 import {
   runTransaction,
   doc,
@@ -19,7 +20,7 @@ import { Transacao, Produto, Cliente, ContaPagar, ContaReceber, Coluna } from "@
 import {
   FiPlus, FiX, FiTrendingUp, FiTrendingDown, FiDollarSign, FiLink,
   FiFilter, FiChevronDown, FiChevronUp, FiArrowDownCircle, FiArrowUpCircle,
-  FiList, FiCheck, FiTrash2,
+  FiList, FiCheck, FiTrash2, FiDownload,
 } from "react-icons/fi";
 
 const colunas: Coluna[] = [
@@ -410,6 +411,106 @@ export default function FinanceiroPage() {
 
   const produtosAtivos = produtos.filter((p) => p.status === "ativo" && p.estoque > 0);
 
+  // ─── Exportar Excel (contabilidade) ──────────────────────────
+  const exportarExcel = () => {
+    const wb = XLSX.utils.book_new();
+    const dataExport = new Date().toLocaleDateString("pt-BR");
+    const horaExport = new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+
+    // ── Aba Resumo ────────────────────────────────────────────
+    const totalReceitasFinal = transacoes.filter((t) => t.tipo === "receita").reduce((a, t) => a + Number(t.valor), 0);
+    const totalDespesasFinal = transacoes.filter((t) => t.tipo === "despesa").reduce((a, t) => a + Number(t.valor), 0);
+    const saldoFinal = totalReceitasFinal - totalDespesasFinal;
+    const totalAPagarFinal = contasPagar.filter((c) => statusEfetivoPagar(c) !== "pago").reduce((a, c) => a + Number(c.valor), 0);
+    const totalAReceberFinal = contasReceber.filter((c) => statusEfetivoReceber(c) !== "recebido").reduce((a, c) => a + Number(c.valor), 0);
+
+    const resumoData = [
+      ["RELATÓRIO FINANCEIRO", "", "", ""],
+      [`Emitido em: ${dataExport} às ${horaExport}`, "", "", ""],
+      [""],
+      ["RESULTADO DO EXTRATO", "", "", ""],
+      ["Indicador", "Valor (R$)", "", ""],
+      ["Total de Receitas", totalReceitasFinal, "", ""],
+      ["Total de Despesas", totalDespesasFinal, "", ""],
+      ["Saldo (Receitas - Despesas)", saldoFinal, "", ""],
+      [""],
+      ["OBRIGAÇÕES E DIREITOS", "", "", ""],
+      ["Indicador", "Valor (R$)", "Qtd. Itens", ""],
+      ["Contas a Pagar (em aberto)", totalAPagarFinal, contasPagar.filter((c) => statusEfetivoPagar(c) !== "pago").length, ""],
+      ["Contas a Receber (em aberto)", totalAReceberFinal, contasReceber.filter((c) => statusEfetivoReceber(c) !== "recebido").length, ""],
+      ["Resultado Líquido Projetado", saldoFinal - totalAPagarFinal + totalAReceberFinal, "", ""],
+      [""],
+      ["RECEITAS POR CATEGORIA", "", "", ""],
+      ["Categoria", "Total (R$)", "Qtd.", ""],
+      ...Array.from(new Set(transacoes.filter((t) => t.tipo === "receita").map((t) => t.categoria))).sort().map((cat) => {
+        const itens = transacoes.filter((t) => t.tipo === "receita" && t.categoria === cat);
+        return [cat || "Geral", itens.reduce((a, t) => a + Number(t.valor), 0), itens.length, ""];
+      }),
+      [""],
+      ["DESPESAS POR CATEGORIA", "", "", ""],
+      ["Categoria", "Total (R$)", "Qtd.", ""],
+      ...Array.from(new Set(transacoes.filter((t) => t.tipo === "despesa").map((t) => t.categoria))).sort().map((cat) => {
+        const itens = transacoes.filter((t) => t.tipo === "despesa" && t.categoria === cat);
+        return [cat || "Geral", itens.reduce((a, t) => a + Number(t.valor), 0), itens.length, ""];
+      }),
+    ];
+    const wsResumo = XLSX.utils.aoa_to_sheet(resumoData);
+    wsResumo["!cols"] = [{ wch: 38 }, { wch: 18 }, { wch: 12 }, { wch: 10 }];
+    XLSX.utils.book_append_sheet(wb, wsResumo, "Resumo");
+
+    // ── Aba Extrato ───────────────────────────────────────────
+    const extratoRows = transacoes
+      .sort((a, b) => (a.data ?? "").localeCompare(b.data ?? ""))
+      .map((t) => ({
+        Data: formatarData(t.data),
+        Descrição: t.descricao,
+        Tipo: t.tipo === "receita" ? "Receita" : "Despesa",
+        Categoria: t.categoria || "Geral",
+        "Cliente / Fornecedor": t.clienteNome || "—",
+        Produto: t.produtoNome || "—",
+        Quantidade: t.quantidade ?? "",
+        "Valor (R$)": Number(t.valor),
+        Débito: t.tipo === "despesa" ? Number(t.valor) : "",
+        Crédito: t.tipo === "receita" ? Number(t.valor) : "",
+      }));
+    const wsExtrato = XLSX.utils.json_to_sheet(extratoRows, { header: ["Data", "Descrição", "Tipo", "Categoria", "Cliente / Fornecedor", "Produto", "Quantidade", "Valor (R$)", "Débito", "Crédito"] });
+    wsExtrato["!cols"] = [{ wch: 12 }, { wch: 35 }, { wch: 10 }, { wch: 18 }, { wch: 25 }, { wch: 22 }, { wch: 10 }, { wch: 14 }, { wch: 14 }, { wch: 14 }];
+    XLSX.utils.book_append_sheet(wb, wsExtrato, "Extrato");
+
+    // ── Aba Contas a Pagar ────────────────────────────────────
+    const pagarRows = contasPagar
+      .sort((a, b) => (a.vencimento ?? "").localeCompare(b.vencimento ?? ""))
+      .map((c) => ({
+        Vencimento: formatarData(c.vencimento),
+        Descrição: c.descricao,
+        Fornecedor: c.fornecedor || "—",
+        Categoria: c.categoria || "Geral",
+        "Valor (R$)": Number(c.valor),
+        Status: statusEfetivoPagar(c) === "pago" ? "Pago" : statusEfetivoPagar(c) === "atrasado" ? "Atrasado" : "Pendente",
+      }));
+    const wsPagar = XLSX.utils.json_to_sheet(pagarRows, { header: ["Vencimento", "Descrição", "Fornecedor", "Categoria", "Valor (R$)", "Status"] });
+    wsPagar["!cols"] = [{ wch: 14 }, { wch: 35 }, { wch: 25 }, { wch: 18 }, { wch: 14 }, { wch: 12 }];
+    XLSX.utils.book_append_sheet(wb, wsPagar, "Contas a Pagar");
+
+    // ── Aba Contas a Receber ──────────────────────────────────
+    const receberRows = contasReceber
+      .sort((a, b) => (a.vencimento ?? "").localeCompare(b.vencimento ?? ""))
+      .map((c) => ({
+        Vencimento: formatarData(c.vencimento),
+        Descrição: c.descricao,
+        Cliente: c.cliente || "—",
+        Categoria: c.categoria || "Geral",
+        "Valor (R$)": Number(c.valor),
+        Status: statusEfetivoReceber(c) === "recebido" ? "Recebido" : statusEfetivoReceber(c) === "atrasado" ? "Atrasado" : "Pendente",
+      }));
+    const wsReceber = XLSX.utils.json_to_sheet(receberRows, { header: ["Vencimento", "Descrição", "Cliente", "Categoria", "Valor (R$)", "Status"] });
+    wsReceber["!cols"] = [{ wch: 14 }, { wch: 35 }, { wch: 25 }, { wch: 18 }, { wch: 14 }, { wch: 12 }];
+    XLSX.utils.book_append_sheet(wb, wsReceber, "Contas a Receber");
+
+    const nomeArquivo = `financeiro_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    XLSX.writeFile(wb, nomeArquivo);
+  };
+
   const tabClass = (t: Aba) =>
     `flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-colors ${
       aba === t
@@ -421,41 +522,25 @@ export default function FinanceiroPage() {
     <DashboardLayout titulo="Financeiro">
       <div className="space-y-6">
 
-        {/* Cards de resumo globais */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <StatCard
-            titulo="Saldo (Extrato)"
-            valor={formatarValor(saldo)}
-            icone={<FiDollarSign />}
-            cor={saldo >= 0 ? "blue" : "amber"}
-            variacao={saldo >= 0 ? "Positivo" : "Negativo"}
-          />
-          <StatCard
-            titulo="A Pagar (em aberto)"
-            valor={formatarValor(totalAPagar)}
-            icone={<FiArrowDownCircle />}
-            cor="red"
-            variacao={`${contasPagar.filter((c) => statusEfetivoPagar(c) !== "pago").length} conta(s)`}
-          />
-          <StatCard
-            titulo="A Receber (em aberto)"
-            valor={formatarValor(totalAReceber)}
-            icone={<FiArrowUpCircle />}
-            cor="green"
-            variacao={`${contasReceber.filter((c) => statusEfetivoReceber(c) !== "recebido").length} conta(s)`}
-          />
-        </div>
-
         {/* Abas de navegação */}
-        <div className="flex flex-wrap gap-2">
-          <button onClick={() => setAba("extrato")} className={tabClass("extrato")}>
-            <FiList size={15} /> Extrato
-          </button>
-          <button onClick={() => setAba("pagar")} className={tabClass("pagar")}>
-            <FiArrowDownCircle size={15} /> Contas a Pagar
-          </button>
-          <button onClick={() => setAba("receber")} className={tabClass("receber")}>
-            <FiArrowUpCircle size={15} /> Contas a Receber
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap gap-2">
+            <button onClick={() => setAba("extrato")} className={tabClass("extrato")}>
+              <FiList size={15} /> Extrato
+            </button>
+            <button onClick={() => setAba("pagar")} className={tabClass("pagar")}>
+              <FiArrowDownCircle size={15} /> Contas a Pagar
+            </button>
+            <button onClick={() => setAba("receber")} className={tabClass("receber")}>
+              <FiArrowUpCircle size={15} /> Contas a Receber
+            </button>
+          </div>
+          <button
+            onClick={exportarExcel}
+            className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-medium hover:bg-emerald-700 transition-colors"
+            title="Exporta Extrato, Contas a Pagar e Contas a Receber em um único arquivo Excel"
+          >
+            <FiDownload size={15} /> Exportar Excel
           </button>
         </div>
 
