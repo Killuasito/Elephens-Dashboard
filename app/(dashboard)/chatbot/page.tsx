@@ -3,6 +3,8 @@
 import { useState, useRef, useEffect } from "react";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { useCollection } from "@/hooks/useFirestore";
+import { usePermissoes } from "@/hooks/usePermissoes";
+import { PLANOS } from "@/lib/planos";
 import { Transacao, Cliente, Produto, Tarefa } from "@/types";
 import { FiSend, FiMessageSquare, FiRefreshCw, FiBookmark, FiList, FiTrash2, FiX } from "react-icons/fi";
 import { RiRobot2Line } from "react-icons/ri";
@@ -320,6 +322,12 @@ export default function ChatbotPage() {
   const { dados: clientes } = useCollection<Cliente>("clientes");
   const { dados: produtos } = useCollection<Produto>("produtos");
   const { dados: tarefas } = useCollection<Tarefa>("tarefas");
+  const { plano, chatUsage } = usePermissoes();
+
+  const mesAtual = new Date().toISOString().slice(0, 7);
+  const limite = PLANOS[plano].limite;
+  const usageCount = chatUsage?.mes === mesAtual ? (chatUsage.count ?? 0) : 0;
+  const limiteAtingido = isFinite(limite) && usageCount >= limite;
 
   const [mensagens, setMensagens] = useState<Mensagem[]>([]);
   const [input, setInput] = useState("");
@@ -405,7 +413,7 @@ export default function ChatbotPage() {
 
   const enviar = async (texto: string) => {
     const textoFinal = texto.trim();
-    if (!textoFinal || carregando) return;
+    if (!textoFinal || carregando || limiteAtingido) return;
 
     setErro(null);
     setInput("");
@@ -534,8 +542,45 @@ export default function ChatbotPage() {
             </div>
           </div>
 
-          {/* Botões do header */}
-          <div className="flex items-center gap-1.5 flex-wrap">
+          {/* Indicador de uso + botões */}
+          <div className="flex items-center gap-2 flex-wrap justify-end">
+            {/* Badge de plano e uso */}
+            {isFinite(limite) ? (
+              <div className="flex flex-col items-end gap-0.5">
+                <div className="flex items-center gap-1.5">
+                  <span className={clsx(
+                    "text-xs font-medium px-2 py-0.5 rounded-full",
+                    limiteAtingido
+                      ? "bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400"
+                      : usageCount / limite >= 0.75
+                      ? "bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400"
+                      : "bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400"
+                  )}>
+                    {PLANOS[plano].label}
+                  </span>
+                  <span className={clsx(
+                    "text-xs",
+                    limiteAtingido ? "text-red-500 font-semibold" : "text-gray-400"
+                  )}>
+                    {usageCount}/{limite} msgs
+                  </span>
+                </div>
+                <div className="w-28 h-1 rounded-full bg-gray-100 dark:bg-gray-700 overflow-hidden">
+                  <div
+                    className={clsx(
+                      "h-full rounded-full transition-all",
+                      limiteAtingido ? "bg-red-500" : usageCount / limite >= 0.75 ? "bg-amber-400" : "bg-blue-500"
+                    )}
+                    style={{ width: `${Math.min((usageCount / limite) * 100, 100)}%` }}
+                  />
+                </div>
+              </div>
+            ) : (
+              <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400">
+                {PLANOS[plano].label} · Ilimitado
+              </span>
+            )}
+
             {/* Salvar / Atualizar chat */}
             {!semMensagens && (
               <button
@@ -681,7 +726,12 @@ export default function ChatbotPage() {
         </div>
 
         {/* Input */}
-        <div className="mt-3 flex gap-2 items-end bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl px-4 py-3">
+        <div className={clsx(
+          "mt-3 flex gap-2 items-end border rounded-2xl px-4 py-3",
+          limiteAtingido
+            ? "bg-red-50 dark:bg-red-900/10 border-red-200 dark:border-red-800"
+            : "bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700"
+        )}>
           <textarea
             ref={inputRef}
             rows={1}
@@ -693,14 +743,14 @@ export default function ChatbotPage() {
               e.target.style.height = `${Math.min(e.target.scrollHeight, 120)}px`;
             }}
             onKeyDown={handleKeyDown}
-            placeholder="Pergunte sobre seu negócio... (Enter para enviar)"
-            disabled={carregando}
-            className="flex-1 resize-none bg-transparent text-sm text-gray-800 dark:text-gray-100 placeholder-gray-400 focus:outline-none"
+            placeholder={limiteAtingido ? "Limite de mensagens atingido. Fale com o administrador." : "Pergunte sobre seu negócio... (Enter para enviar)"}
+            disabled={carregando || limiteAtingido}
+            className="flex-1 resize-none bg-transparent text-sm text-gray-800 dark:text-gray-100 placeholder-gray-400 focus:outline-none disabled:cursor-not-allowed"
             style={{ minHeight: "24px" }}
           />
           <button
             onClick={() => enviar(input)}
-            disabled={carregando || !input.trim()}
+            disabled={carregando || !input.trim() || limiteAtingido}
             className="shrink-0 w-9 h-9 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center text-white transition-colors"
             aria-label="Enviar"
           >

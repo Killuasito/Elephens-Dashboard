@@ -3,6 +3,7 @@
 
 import { User } from "firebase/auth";
 import type { ModuloId } from "@/lib/modulos";
+import type { PlanoId } from "@/lib/planos";
 
 // Permissões de acesso por módulo de um usuário
 export interface Permissao {
@@ -11,6 +12,8 @@ export interface Permissao {
   nome?: string;
   nomeApp?: string;
   modulos: Record<ModuloId, boolean>;
+  plano?: PlanoId;
+  chatUsage?: { count: number; mes: string };
   criadoEm?: string;
 }
 

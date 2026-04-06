@@ -8,6 +8,7 @@ export const runtime = "nodejs";
 import { NextRequest, NextResponse } from "next/server";
 import { adminAuth, adminDb } from "@/lib/firebase-admin";
 import { MODULOS_PADRAO } from "@/lib/modulos";
+import { PLANO_PADRAO } from "@/lib/planos";
 
 const ADMIN_EMAIL = process.env.NEXT_PUBLIC_ADMIN_EMAIL;
 
@@ -50,6 +51,7 @@ export async function POST(request: NextRequest) {
       email: userRecord.email,
       nome: nome?.trim() ?? "",
       modulos: MODULOS_PADRAO,
+      plano: PLANO_PADRAO,
       criadoEm: new Date().toISOString(),
     });
 

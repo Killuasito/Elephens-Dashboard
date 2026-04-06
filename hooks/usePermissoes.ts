@@ -12,6 +12,7 @@ import {
 import { db } from "@/lib/firebase";
 import { useAuth } from "@/hooks/useAuth";
 import { MODULOS_PADRAO, ModuloId } from "@/lib/modulos";
+import { PLANO_PADRAO, PlanoId } from "@/lib/planos";
 import { Permissao } from "@/types";
 
 // ─── usePermissoes ────────────────────────────────────────────────
@@ -23,6 +24,8 @@ export function usePermissoes() {
   const [modulos, setModulos] = useState<Record<ModuloId, boolean>>(MODULOS_PADRAO);
   const [nomeUsuario, setNomeUsuario] = useState<string>("");
   const [nomeApp, setNomeApp] = useState<string>("");
+  const [plano, setPlano] = useState<PlanoId>(PLANO_PADRAO);
+  const [chatUsage, setChatUsage] = useState<{ count: number; mes: string } | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -41,6 +44,7 @@ export function usePermissoes() {
           uid: user.uid,
           email: user.email,
           modulos: MODULOS_PADRAO,
+          plano: PLANO_PADRAO,
           criadoEm: new Date().toISOString(),
         });
       }
@@ -54,6 +58,8 @@ export function usePermissoes() {
         setModulos({ ...MODULOS_PADRAO, ...data.modulos });
         setNomeUsuario(data.nome ?? "");
         setNomeApp(data.nomeApp ?? "");
+        setPlano((data.plano as PlanoId) ?? PLANO_PADRAO);
+        setChatUsage(data.chatUsage ?? null);
       }
       setLoading(false);
     });
@@ -63,7 +69,7 @@ export function usePermissoes() {
 
   const temAcesso = (modulo: ModuloId): boolean => modulos[modulo] ?? false;
 
-  return { modulos, nomeUsuario, nomeApp, loading, temAcesso };
+  return { modulos, nomeUsuario, nomeApp, plano, chatUsage, loading, temAcesso };
 }
 
 // ─── useTodasPermissoes ───────────────────────────────────────────
@@ -111,4 +117,12 @@ export async function atualizarNome(uid: string, nome: string) {
 export async function atualizarNomeApp(uid: string, nomeApp: string) {
   const ref = doc(db, "permissoes", uid);
   await updateDoc(ref, { nomeApp: nomeApp.trim() });
+}
+
+// ─── atualizarPlano ───────────────────────────────────────────────
+// Define o plano de uso do ChatBot IA para um usuário específico.
+
+export async function atualizarPlano(uid: string, plano: PlanoId) {
+  const ref = doc(db, "permissoes", uid);
+  await updateDoc(ref, { plano });
 }

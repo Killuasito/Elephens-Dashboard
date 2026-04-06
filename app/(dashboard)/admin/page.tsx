@@ -4,8 +4,9 @@ import { useState } from "react";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import ToggleSwitch from "@/components/ui/ToggleSwitch";
 import { useAuth } from "@/hooks/useAuth";
-import { useTodasPermissoes, atualizarPermissao, atualizarNome, atualizarNomeApp } from "@/hooks/usePermissoes";
+import { useTodasPermissoes, atualizarPermissao, atualizarNome, atualizarNomeApp, atualizarPlano } from "@/hooks/usePermissoes";
 import { MODULOS_IDS, MODULOS_INFO, ModuloId } from "@/lib/modulos";
+import { PLANOS, PlanoId } from "@/lib/planos";
 import { Permissao } from "@/types";
 import {
   FiShield, FiUsers, FiEdit2, FiCheck,
@@ -191,6 +192,10 @@ export default function AdminPage() {
     setNomeAppTemp("");
   };
 
+  const handleAtualizarPlano = async (uid: string, plano: PlanoId) => {
+    await atualizarPlano(uid, plano);
+  };
+
   // Exclui o próprio admin da lista
   const outrosUsuarios = usuarios.filter((u) => u.email !== ADMIN_EMAIL);
 
@@ -287,6 +292,45 @@ export default function AdminPage() {
                       <p className="text-sm text-gray-500 dark:text-gray-400">{usuario.email}</p>
                       <p className="text-xs text-gray-400 dark:text-gray-500 font-mono mt-0.5 select-all">{usuario.uid}</p>
 
+                      {/* Plano ChatBot */}
+                      <div className="mt-2 flex flex-wrap items-center gap-3">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-xs text-gray-400 dark:text-gray-500">Plano ChatBot</span>
+                          <select
+                            value={usuario.plano ?? "basic"}
+                            onChange={(e) => handleAtualizarPlano(usuario.uid, e.target.value as PlanoId)}
+                            className="text-xs px-2 py-1 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                          >
+                            {(Object.keys(PLANOS) as PlanoId[]).map((p) => (
+                              <option key={p} value={p}>
+                                {PLANOS[p].label} — {isFinite(PLANOS[p].limite) ? `${PLANOS[p].limite}/mês` : "Ilimitado"}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        {(() => {
+                          const mesAtual = new Date().toISOString().slice(0, 7);
+                          const plano = usuario.plano ?? "basic";
+                          const limite = PLANOS[plano].limite;
+                          const count = usuario.chatUsage?.mes === mesAtual ? (usuario.chatUsage?.count ?? 0) : 0;
+                          if (!isFinite(limite)) return null;
+                          const pct = Math.min((count / limite) * 100, 100);
+                          return (
+                            <div className="flex items-center gap-2 min-w-30">
+                              <div className="flex-1 h-1.5 rounded-full bg-gray-100 dark:bg-gray-700 overflow-hidden">
+                                <div
+                                  className={`h-full rounded-full transition-all ${pct >= 100 ? "bg-red-500" : pct >= 75 ? "bg-amber-400" : "bg-blue-500"}`}
+                                  style={{ width: `${pct}%` }}
+                                />
+                              </div>
+                              <span className={`text-xs whitespace-nowrap ${count >= limite ? "text-red-500 font-semibold" : "text-gray-400 dark:text-gray-500"}`}>
+                                {count}/{limite}
+                              </span>
+                            </div>
+                          );
+                        })()}
+                      </div>
+
                       {/* Nome na Sidebar */}
                       <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-800">
                         <p className="text-xs text-gray-400 dark:text-gray-500 mb-1.5">Nome na Sidebar</p>
@@ -327,11 +371,12 @@ export default function AdminPage() {
                       </div>
                     </div>
 
-                    {/* Badge + Excluir */}
+                    {/* Badge + Plano + Excluir */}
                     <div className="flex flex-col items-end gap-2 shrink-0">
                       <span className="text-xs bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 px-2.5 py-1 rounded-full font-medium whitespace-nowrap">
                         {modulosAtivos}/{MODULOS_IDS.length} módulos
                       </span>
+
                       <button
                         onClick={() => setUsuarioParaExcluir(usuario)}
                         className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
